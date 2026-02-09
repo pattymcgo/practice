@@ -1,6 +1,6 @@
 # Course Reserves Workflow Improvement Recommendations
 
-**Prepared for:** Library Technical Services
+**Prepared for:** Patty McGowan
 **System:** Ex Libris Alma
 **Date:** February 2, 2026
 
