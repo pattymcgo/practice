@@ -1,0 +1,8 @@
+{
+  "alma_api_key": "YOUR_API_KEY_HERE",
+  "alma_region": "na",
+  "comments": {
+    "alma_region_options": "na (North America), eu (Europe), ap (Asia Pacific)",
+    "instructions": "1. Copy this file and rename it to 'config.json', 2. Replace YOUR_API_KEY_HERE with your actual Alma API key, 3. Set the correct region for your institution"
+  }
+}

@@ -1,0 +1,44 @@
+# API Keys and Sensitive Configuration
+scripts/isbn_search/config.json
+scripts/isbn_search/config_sandbox.json
+scripts/course_reserves_update/config.json
+scripts/course_reserves_update/config_sandbox.json
+
+# Data Files (may contain sensitive information)
+data/*.xlsx
+data/*.csv
+data/*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+
+# Claude Code
+.claude/memory/
+.claude/projects/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Session transcripts (may be large)
+notes/*.jsonl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.bak
+*.log
