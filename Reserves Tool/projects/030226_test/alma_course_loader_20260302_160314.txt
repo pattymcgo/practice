@@ -1,0 +1,15 @@
+Code	Section	Operation	Name	Processing Department	Start Date	End Date	Number of Participants	Instructor	Academic Department	Year	Term	Weekly Hours	All Instructors	Search ID
+HSD 110	0800, 0801, 0803, 082W, 0900, 0904, 0905, 1101, 1103, J050, J051	NEW	Comprehensive Health Education	RESERVES	2026-01-26	2026-05-26	193	Belcastro,Philip A / Bravo,Jason / Grace,Lisa / Hansen,Hardaye / Thrower,Anika	HSD	2026	Spring	4	Belcastro,Philip A / Bravo,Jason / Grace,Lisa / Hansen,Hardaye / Thrower,Anika	
+HSD 195	0500, 1400	NEW	Food, Culture and Society	RESERVES	2026-01-26	2026-05-26	50	McNamara,Gloria S	HSD	2026	Spring	3	McNamara,Gloria S	
+HSD 202	100W, 1200, J120	NEW	Drug Use in American Society	RESERVES	2026-01-26	2026-05-26	51	DeFillippo,Patricia A	HSD	2026	Spring	2	DeFillippo,Patricia A	
+HSD 220	1100	NEW	Human Sexuality	RESERVES	2026-01-26	2026-05-26	12	Belcastro,Philip A	HSD	2026	Spring	4	Belcastro,Philip A	
+HSD 225	0500, J050	NEW	Health Concerns of Women	RESERVES	2026-01-02	2026-01-23	25	Grace,Lisa	HSD	2026	Spring	3	Grace,Lisa	
+HSD 230	5000	NEW	Consumer Health Survey	RESERVES	2026-01-26	2026-05-26	38	Grace,Lisa	HSD	2026	Spring	4	Grace,Lisa	
+HSD 235	0500, 0501, 0502, 0504, 0505, 0900, 1000, 1400, 1401, 1800, 5000, 5001, CH01	NEW	Nutrition for Health	RESERVES	2026-01-26	2026-05-26	444	Bravo,Jason / Pettie,Catherine B. / Stanton-koko,Monica Joy	HSD	2026	Spring	3	Bravo,Jason / Pettie,Catherine B. / Stanton-koko,Monica Joy	
+HSD 240	0900, 1000, 1600	NEW	First Aid Safety	RESERVES	2026-01-26	2026-05-26	68	Evangelista,Alex J	HSD	2026	Spring	2	Evangelista,Alex J	
+HSD 250	110W	NEW	Stress Management	RESERVES	2026-01-26	2026-05-26	15	Hansen,Hardaye	HSD	2026	Spring	2	Hansen,Hardaye	
+HSD 255	1200	NEW	Comm Strategy- Health Literacy	RESERVES			0		HSD	2026	Spring	3		
+HSD 290	1300	NEW	Prin & Prac of Behavior Change	RESERVES	2026-01-26	2026-05-26	19	Hansen,Hardaye	HSD	2026	Spring	2	Hansen,Hardaye	
+HSD 295	1800	NEW	Epidemiology Public Hlth Prac	RESERVES	2026-01-26	2026-05-26	23	Shneyderman,Yuliya	HSD	2026	Spring	2	Shneyderman,Yuliya	
+HSD 296	0900	NEW	Biostatistics in Public Health	RESERVES	2026-01-26	2026-05-26	20	Shneyderman,Yuliya	HSD	2026	Spring	4	Shneyderman,Yuliya	
+ITL 106H	5000	NEW	Elementary Italian II (Honors)	RESERVES	2026-01-26	2026-05-26	4	Comello Perry,Patrizia	ITL	2026	Spring	3	Comello Perry,Patrizia	

@@ -482,28 +482,58 @@ def process_courses(input_file, api_key, base_url, dry_run=False):
 # ============================================================================
 
 def main():
-    """Main execution function."""
+    """Main execution function - now accepts input files for any semester."""
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
         description='Alma Course Reserves Automation Tool',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python course_automation_tool.py                    # Run in production mode (dry-run)
-  python course_automation_tool.py --sandbox          # Run in sandbox mode (dry-run)
+  python course_automation_tool.py
+  python course_automation_tool.py --input Spring2026_isbn_results.xlsx
+  python course_automation_tool.py --input data.xlsx --semester "Fall2026"
+  python course_automation_tool.py --sandbox --input test_data.xlsx
+  python course_automation_tool.py --input data.xlsx --dry-run false
         """
+    )
+
+    default_input = '/Users/patty_home/Desktop/Agentic AI/Reserves Tool/data/primo_isbn_results_20260223_133345.xlsx'
+
+    parser.add_argument(
+        '--input',
+        default=default_input,
+        help='Path to ISBN search results Excel file'
+    )
+    parser.add_argument(
+        '--semester',
+        default=None,
+        help='Semester identifier for output file naming'
     )
     parser.add_argument(
         '--sandbox',
         action='store_true',
         help='Use sandbox environment (config_sandbox.json)'
     )
+    parser.add_argument(
+        '--dry-run',
+        dest='dry_run',
+        default='true',
+        help='Run in dry-run mode (true/false). Default: true'
+    )
+
     args = parser.parse_args()
+
+    # Convert dry_run to boolean
+    dry_run = args.dry_run.lower() in ['true', 'yes', '1']
 
     print("=" * 70)
     print("ALMA COURSE RESERVES AUTOMATION TOOL")
     if args.sandbox:
         print("🧪 SANDBOX MODE")
+    if dry_run:
+        print("⚠️  DRY RUN MODE")
+    else:
+        print("🔴 LIVE MODE - Will create courses in Alma")
     print("=" * 70)
     print()
 
@@ -512,8 +542,6 @@ Examples:
     print("   - Courses API (Read/Write)")
     print("   - Reading Lists API (Read/Write)")
     print("   - Citations API (Read/Write)")
-    print()
-    print("Running in DRY RUN mode to show what would be created...")
     print()
 
     # Load configuration
@@ -530,8 +558,8 @@ Examples:
     print(f"API Base URL: {base_url}")
     print()
 
-    # Input file (use your ISBN search results with course info)
-    input_file = '/Users/patty_home/Desktop/Agentic AI/data/primo_isbn_results_20260223_133345.xlsx'
+    # Input file
+    input_file = args.input
 
     # Check if input file exists
     if not os.path.exists(input_file):
@@ -539,16 +567,22 @@ Examples:
         print("Please run the ISBN search first to generate this file.")
         exit(1)
 
-    # Default to dry run for safety (change to False when you have permissions)
-    dry_run = True
+    print(f"Input file: {input_file}")
+    if args.semester:
+        print(f"Semester: {args.semester}")
+    print()
 
     # Process courses
     results_df = process_courses(input_file, api_key, base_url, dry_run=dry_run)
 
     # Save results
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_dir = '/Users/patty_home/Desktop/Agentic AI/data'
-    output_file = f'{output_dir}/course_automation_results_{timestamp}.xlsx'
+    output_dir = os.path.dirname(input_file) or '/Users/patty_home/Desktop/Agentic AI/Reserves Tool/data'
+
+    if args.semester:
+        output_file = f'{output_dir}/{args.semester}_course_automation_results_{timestamp}.xlsx'
+    else:
+        output_file = f'{output_dir}/course_automation_results_{timestamp}.xlsx'
 
     print(f"\nSaving results to: {output_file}")
     results_df.to_excel(output_file, index=False)

@@ -383,15 +383,40 @@ def main():
     """
     Main execution function.
     """
+    import argparse
+
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Search Primo catalog for ISBNs')
+    parser.add_argument('--input',
+                       default='/Users/patty_home/Desktop/Agentic AI/Reserves Tool/data/full_dataset_BOOKS_consolidated.xlsx',
+                       help='Path to input Excel file with ISBNs')
+    parser.add_argument('--semester',
+                       default=None,
+                       help='Semester identifier (e.g., Spring2026)')
+    parser.add_argument('--output',
+                       default=None,
+                       help='Path to output Excel file')
+
+    args = parser.parse_args()
+
     print("=" * 70)
     print("PRIMO ISBN SEARCH TOOL - CUNY BMCC")
     print("=" * 70)
     print()
 
     # Set input/output files
-    input_file = '/Users/patty_home/Desktop/Agentic AI/data/merged_course_textbooks_CLEANED.xlsx'
+    input_file = args.input
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_file = f'/Users/patty_home/Desktop/Agentic AI/data/primo_isbn_results_{timestamp}.xlsx'
+
+    # Determine output directory and filename
+    if args.output:
+        output_file = args.output
+    else:
+        output_dir = '/Users/patty_home/Desktop/Agentic AI/Reserves Tool/data'
+        if args.semester:
+            output_file = f'{output_dir}/{args.semester}_primo_results_{timestamp}.xlsx'
+        else:
+            output_file = f'{output_dir}/primo_isbn_results_{timestamp}.xlsx'
 
     # Check if input file exists
     if not os.path.exists(input_file):
@@ -410,11 +435,12 @@ def main():
     print("\n" + "=" * 70)
     print("SEARCH COMPLETE - SUMMARY")
     print("=" * 70)
-    print(f"Total ISBNs searched: {results_df['Status'].notna().sum()}")
+    print(f"Total ISBNs searched: {len(results_df)}")
     print(f"Found in Primo: {len(results_df[results_df['Status'] == 'Found'])}")
     print(f"Not found: {len(results_df[results_df['Status'] == 'Not Found'])}")
-    print(f"Already available: {len(results_df[results_df['Recommendation'] == 'Already Available'])}")
+    print(f"Already available (correct edition): {len(results_df[results_df['Recommendation'] == 'Already Available - Correct Edition'])}")
     print(f"Purchase needed: {len(results_df[results_df['Recommendation'].str.contains('Purchase', na=False)])}")
+    print(f"Edition mismatch: {len(results_df[results_df['Edition_Match'] == 'Mismatch'])}")
     print(f"\nResults saved to: {output_file}")
     print("=" * 70)
 

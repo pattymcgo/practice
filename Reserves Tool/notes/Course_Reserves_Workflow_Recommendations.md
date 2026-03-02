@@ -518,6 +518,215 @@ Following Harvard and Duke Libraries' approaches:
 
 ---
 
+---
+
+## 6. Data Visualization & Reporting Tools
+
+#### Recommended Solution: Multi-Format Reporting Suite
+
+**Overview:**
+Comprehensive visualization and reporting tools to analyze course reserves data, identify trends, and communicate insights to stakeholders.
+
+### A. Interactive Dashboards (Streamlit)
+
+**Two web-based dashboards for real-time data exploration:**
+
+**Dashboard 1: Course Reserves Analytics**
+```bash
+streamlit run course_reserves_dashboard.py
+```
+
+**Features:**
+- 📊 **Overview Tab**: Top courses by enrollment, books distribution, enrollment histograms
+- 🏢 **Departments Tab**: Department comparisons, pie charts, summary tables
+- 👥 **Instructors Tab**: Course load analysis, workload metrics
+- 📚 **Textbooks Tab**: Most used books, sharing opportunities, bulk purchase candidates
+- 📋 **Data Table Tab**: Searchable data with CSV export
+
+**Use Cases:**
+- Budget planning meetings
+- Department liaison communications
+- Faculty consultations
+- Semester-end reviews
+
+**Dashboard 2: Primo ISBN Search Results**
+```bash
+streamlit run primo_results_dashboard.py
+```
+
+**Features:**
+- 📖 **Overview Tab**: Found vs not found status, recommendation breakdowns
+- 🏢 **By Department Tab**: Purchase needs analysis, department priorities
+- ✅ **Availability Tab**: Top courses needing purchases, edition mismatches
+- 📚 **Edition Analysis Tab**: Format availability, manual verification queue
+- 📋 **Data Table Tab**: Full search results with filters
+
+**Use Cases:**
+- Acquisition decisions
+- Budget justification
+- Collection gap analysis
+- Purchase prioritization
+
+### B. Shareable HTML Reports
+
+**For colleagues without Python/Streamlit:**
+
+```bash
+python generate_html_reports.py
+```
+
+**Generates two self-contained HTML files:**
+1. `course_reserves_report_[timestamp].html` - Course overview with 6 interactive charts
+2. `primo_results_report_[timestamp].html` - Library availability analysis
+
+**Benefits:**
+- ✅ No installation required (opens in any browser)
+- ✅ Interactive Plotly charts (hover for details)
+- ✅ Shareable via email, Slack, Google Drive
+- ✅ Works on any device (PC, Mac, tablet, phone)
+
+**Distribution:**
+- Email as attachment
+- Upload to shared drive
+- Present in meetings
+- Include in budget requests
+
+### C. Static Visualizations (PNG/PDF)
+
+**For print materials and presentations:**
+
+**Script 1: Comprehensive Visualizations**
+```bash
+python create_visualizations.py
+```
+**Creates:**
+- Books vs Enrollment bubble chart (by department)
+- Before/after consolidation impact
+- Department breakdown bar chart
+
+**Script 2: Top Courses Analysis**
+```bash
+python create_top_courses_chart.py
+```
+**Creates:**
+- Top 20 courses by enrollment
+- Includes instructor names and book counts
+- Color gradient visualization
+
+**Script 3: Textbook Sharing Analysis**
+```bash
+python analyze_shared_textbooks.py
+```
+**Creates:**
+- 4-panel visualization showing shared textbooks
+- Bulk purchase opportunities
+- Cross-departmental sharing
+- Detailed Excel report with 4 sheets
+
+**Use Cases:**
+- Annual reports
+- Printed presentations
+- Board meetings
+- Email summaries
+
+### D. Data Analysis Scripts
+
+**Deep analysis capabilities:**
+
+**Textbook Sharing Analysis**
+- Identifies books used across multiple courses
+- Finds bulk purchase opportunities (books in 3+ courses)
+- Cross-departmental sharing patterns
+- Cost-benefit analysis for shared titles
+
+**Key Findings Example:**
+- 452 unique textbooks total
+- 56 shared across courses (12.4%)
+- 6 bulk purchase opportunities
+- Estimated savings potential
+
+**Department Comparison**
+- Enrollment trends by department
+- Books-to-students ratio
+- Resource allocation analysis
+- High-impact courses identification
+
+### Implementation Guide
+
+**Setup (One-time):**
+```bash
+# Install required packages
+pip install streamlit plotly openpyxl matplotlib seaborn
+```
+
+**Weekly/Monthly Reporting Workflow:**
+
+1. **Generate Data** (after processing semester data)
+   ```bash
+   python process_full_dataset.py --semester "Fall2026"
+   ```
+
+2. **Run Primo Search** (check library availability)
+   ```bash
+   python primo_isbn_search.py --semester "Fall2026"
+   ```
+
+3. **Generate Reports** (for stakeholders)
+   ```bash
+   # HTML reports for email
+   python generate_html_reports.py
+
+   # Static charts for presentations
+   python create_visualizations.py
+   python create_top_courses_chart.py
+   python analyze_shared_textbooks.py
+   ```
+
+4. **Interactive Analysis** (as needed)
+   ```bash
+   # Launch dashboards for deep-dive analysis
+   streamlit run course_reserves_dashboard.py
+   streamlit run primo_results_dashboard.py
+   ```
+
+**Sharing Options:**
+- **Email**: Attach HTML reports
+- **Network Drive**: Place reports in shared folder
+- **Streamlit Cloud**: Deploy for remote access (free)
+- **Screenshots**: Capture charts for quick sharing
+
+### Success Metrics
+
+**Quantitative:**
+- **Time to generate reports**: 2 hours → 2 minutes (99% reduction)
+- **Stakeholder reach**: Share with 10+ people instantly
+- **Decision speed**: Real-time data = faster acquisition decisions
+
+**Qualitative:**
+- Better communication with faculty
+- Data-driven budget justifications
+- Improved collection development decisions
+- Enhanced transparency
+
+### Cost Analysis
+
+**Software Costs:**
+- **$0** - All tools free and open-source
+- **$0** - Streamlit Community Cloud (optional hosting)
+
+**Time Investment:**
+- **Setup**: 1 hour (install packages)
+- **Learning**: 2-3 hours (first-time use)
+- **Ongoing**: 5 minutes per report generation
+
+**Value Added:**
+- Professional visualizations
+- Better stakeholder communication
+- Data-driven decision making
+- Improved budget justifications
+
+---
+
 ## Conclusion
 
 This comprehensive approach addresses all identified workflow pain points while building on Alma's existing capabilities. The phased implementation allows for:
@@ -527,8 +736,10 @@ This comprehensive approach addresses all identified workflow pain points while 
 ✅ **Sustainable maintenance** (documented, version-controlled code)
 ✅ **Future scalability** (extensible architecture)
 ✅ **Staff empowerment** (building internal technical expertise)
+✅ **Data visualization** (professional reporting and analysis tools)
+✅ **Stakeholder communication** (shareable interactive reports)
 
-By leveraging Python's strong library ecosystem, Alma's robust APIs, and following digital preservation best practices, your library can create a modern, efficient Course Reserves workflow that significantly reduces manual effort while improving data quality and historical recordkeeping.
+By leveraging Python's strong library ecosystem, Alma's robust APIs, modern visualization tools, and following digital preservation best practices, your library can create a modern, efficient Course Reserves workflow that significantly reduces manual effort while improving data quality, historical recordkeeping, and stakeholder communication.
 
 The estimated 150+ hours saved annually can be redirected to higher-value activities like collection development, faculty consultations, and enhanced student support services.
 

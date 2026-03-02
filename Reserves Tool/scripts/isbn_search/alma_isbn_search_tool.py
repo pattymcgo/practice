@@ -1,13 +1,19 @@
 """
-Alma ISBN Search Tool for CUNY BMCC
-------------------------------------
+Alma ISBN Search Tool - Reusable for Multiple Semesters
+--------------------------------------------------------
 This script searches the Alma library system for a list of ISBNs
 and reports on availability, holdings, and whether items need to be purchased.
 
 Uses the Alma Bibs API for ISBN searching.
 
+Usage:
+    python alma_isbn_search_tool.py
+    python alma_isbn_search_tool.py --input /path/to/data.xlsx
+    python alma_isbn_search_tool.py --input Spring2026_BOOKS_consolidated.xlsx --semester "Spring2026"
+
 Author: Patty (with Claude Code assistance)
 Date: 2026-02-23
+Updated: 2026-03-02 - Made reusable for multiple semesters
 """
 
 import pandas as pd
@@ -15,6 +21,8 @@ import requests
 from datetime import datetime
 import os
 import json
+import argparse
+import sys
 
 # ============================================================================
 # CONFIGURATION
@@ -415,8 +423,43 @@ def process_isbn_list(input_file, alma_api_key, alma_region='na'):
 
 def main():
     """
-    Main execution function.
+    Main execution function - now accepts command-line arguments for flexibility.
     """
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description='Search Alma for ISBNs from course/textbook data',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python alma_isbn_search_tool.py
+  python alma_isbn_search_tool.py --input Spring2026_BOOKS_consolidated.xlsx
+  python alma_isbn_search_tool.py --input data.xlsx --semester "Fall2026"
+        """
+    )
+
+    # Default input file
+    default_input = '/Users/patty_home/Desktop/Agentic AI/Reserves Tool/data/merged_course_textbooks_CLEANED.xlsx'
+
+    parser.add_argument(
+        '--input',
+        default=default_input,
+        help='Path to input Excel file with course/textbook data'
+    )
+
+    parser.add_argument(
+        '--semester',
+        default=None,
+        help='Semester identifier for output file naming (e.g., "Spring2026")'
+    )
+
+    parser.add_argument(
+        '--output',
+        default=None,
+        help='Custom output file path (optional)'
+    )
+
+    args = parser.parse_args()
+
     print("=" * 70)
     print("ALMA ISBN SEARCH TOOL")
     print("=" * 70)
@@ -429,18 +472,34 @@ def main():
 
     if not api_key:
         print("ERROR: No API key found in config.json")
-        exit(1)
+        sys.exit(1)
 
-    # Set input/output files
-    input_file = '/Users/patty_home/Desktop/Agentic AI/data/merged_course_textbooks_CLEANED.xlsx'
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_file = f'/Users/patty_home/Desktop/Agentic AI/data/isbn_results_{timestamp}.xlsx'
+    # Set input file
+    input_file = args.input
 
     # Check if input file exists
     if not os.path.exists(input_file):
         print(f"ERROR: Input file '{input_file}' not found!")
         print("Please check the file path.")
-        exit(1)
+        sys.exit(1)
+
+    # Generate output filename
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    if args.output:
+        output_file = args.output
+    elif args.semester:
+        output_dir = os.path.dirname(input_file) or '/Users/patty_home/Desktop/Agentic AI/Reserves Tool/data'
+        output_file = f'{output_dir}/{args.semester}_isbn_results_{timestamp}.xlsx'
+    else:
+        output_dir = os.path.dirname(input_file) or '/Users/patty_home/Desktop/Agentic AI/Reserves Tool/data'
+        output_file = f'{output_dir}/isbn_results_{timestamp}.xlsx'
+
+    print(f"Input file: {input_file}")
+    if args.semester:
+        print(f"Semester: {args.semester}")
+    print(f"Output file: {output_file}")
+    print()
 
     # Process ISBNs
     results_df = process_isbn_list(input_file, api_key, region)
