@@ -1,0 +1,10 @@
+# Excel data files
+*.xlsx
+*.xls
+
+# Excel temp/lock files
+~$*
+
+# Python cache
+__pycache__/
+*.pyc
