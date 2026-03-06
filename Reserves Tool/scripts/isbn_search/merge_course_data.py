@@ -169,22 +169,85 @@ def merge_course_data():
     available_columns = [col for col in column_order if col in merged.columns]
     merged = merged[available_columns]
 
-    # Save merged data
+    # -------------------------------------------------------------------------
+    # Title-based filters
+    # -------------------------------------------------------------------------
+
+    # Titles the library does not purchase - exclude entirely
+    EXCLUDE_TITLE_TERMS = [
+        'lab manual', 'lab. manual', 'laboratory manual', 'laboratory',
+        'with connect', 'access with connect', 'connect online access',
+        'conect core', 'w/connect', '+online access', '+ online access',
+        'with quickbooks',
+    ]
+    # Publishers the library does not purchase from - exclude entirely
+    EXCLUDE_PUBLISHER_TERMS = [
+        'openstax', 'open stax', 'opentextbook',
+    ]
+    # OER/OpenStax titles - reclassify from Book to non-print
+    OER_TITLE_TERMS = ['oer', 'openstax', 'open stax']
+
+    title_lower = merged['Title'].str.lower().fillna('')
+
+    exclude_title_mask = title_lower.apply(
+        lambda t: any(term in t for term in EXCLUDE_TITLE_TERMS)
+    )
+    print(f"\nExcluded {exclude_title_mask.sum()} rows with non-purchasable title terms")
+    merged = merged[~exclude_title_mask].copy()
+
+    publisher_lower = merged['Publisher'].str.lower().fillna('')
+    exclude_pub_mask = publisher_lower.apply(
+        lambda p: any(term in p for term in EXCLUDE_PUBLISHER_TERMS)
+    )
+    print(f"Excluded {exclude_pub_mask.sum()} rows from OER publishers (OpenStax, OpenTextbook, etc.)")
+    merged = merged[~exclude_pub_mask].copy()
+
+    title_lower = merged['Title'].str.lower().fillna('')
+    oer_mask = (merged['TextbookType'] == 'Book') & title_lower.apply(
+        lambda t: any(term in t for term in OER_TITLE_TERMS)
+    )
+    print(f"Reclassified {oer_mask.sum()} OER/OpenStax titles from Book to non-print")
+    merged.loc[oer_mask, 'TextbookType'] = 'OER / Open Educational Resource'
+
+    # Split by TextbookType: Books vs everything else
+    books = merged[merged['TextbookType'] == 'Book']
+    nonprint = merged[merged['TextbookType'] != 'Book']
+
+    # Derive output paths for split files
+    books_file = output_file.replace('.xlsx', '_BOOKS.xlsx')
+    nonprint_file = output_file.replace('.xlsx', '_NONPRINT.xlsx')
+
+    # Save all three files
     print(f"\nSaving merged data to: {output_file}")
     merged.to_excel(output_file, index=False)
+
+    print(f"Saving books-only data to: {books_file}")
+    books.to_excel(books_file, index=False)
+
+    print(f"Saving non-print data to: {nonprint_file}")
+    nonprint.to_excel(nonprint_file, index=False)
 
     # Summary statistics
     print("\n" + "="*70)
     print("SUMMARY")
     print("="*70)
     print(f"Total textbook entries: {len(merged)}")
-    print(f"Unique courses: {merged['Course'].nunique()}")
+    print(f"  - Books (TextbookType = 'Book'): {len(books)}")
+    print(f"  - Non-print (all other types):   {len(nonprint)}")
+    if 'TextbookType' in merged.columns:
+        print(f"\nNon-print breakdown:")
+        for ttype, count in nonprint['TextbookType'].value_counts().items():
+            print(f"  {ttype}: {count}")
+    print(f"\nUnique courses: {merged['Course'].nunique()}")
     print(f"Unique sections (textbook): {merged['Section'].nunique()}")
     print(f"Unique ISBNs: {merged['ISBN'].nunique()}")
     if 'Instructor_Name' in merged.columns:
         print(f"Unique instructors: {merged['Instructor_Name'].dropna().nunique()}")
 
-    print(f"\nMerged file saved: {output_file}")
+    print(f"\nFiles saved:")
+    print(f"  All items:  {output_file}")
+    print(f"  Books only: {books_file}")
+    print(f"  Non-print:  {nonprint_file}")
     print("="*70)
 
     # Show sample of merged data

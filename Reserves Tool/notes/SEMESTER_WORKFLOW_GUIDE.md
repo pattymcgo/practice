@@ -37,7 +37,67 @@ python alma_isbn_search_tool.py \
 
 ---
 
-### Step 3: Create Courses in Alma
+### Step 3: Add Internal Notes to Reserve Items in Alma
+
+At the start of each semester, tag all physical reserve items with an internal note
+(e.g. `On Reserve SP26`) so staff can identify them. This is done via an Alma set.
+
+**3a — Extract ISBNs from consolidated books file:**
+
+```bash
+cd "/Users/patty_home/Desktop/Agentic AI/Reserves Tool"
+python3 -c "
+import pandas as pd, re
+df = pd.read_excel('data/full_dataset_BOOKS_consolidated.xlsx')
+isbns = set()
+for val in df['ISBN_All_Editions'].dropna():
+    for p in re.split(r'[,;]', str(val)):
+        p = p.strip().replace('-', '')
+        if re.fullmatch(r'\d{10}|\d{13}', p):
+            isbns.add(p)
+pd.DataFrame(sorted(isbns), columns=['ISBN']).to_csv('data/SP26_ISBNs_for_analytics.csv', index=False)
+print(len(isbns), 'ISBNs saved')
+"
+```
+
+**3b — Get barcodes from Alma Analytics** (Physical Items subject area):
+
+Columns: `ISBN`, `Barcode`
+
+Filters:
+| Field | Condition | Value |
+|---|---|---|
+| ISBN | is in | *(paste ISBN list from step 3a)* |
+| **AND** Lifecycle | equals | `Active` |
+
+> Always include `Lifecycle = Active` — without it, weeded items will appear and fail to load into a set.
+
+Export as CSV, save to `data/`.
+
+**3c — Extract barcodes to Excel:**
+
+```bash
+python3 -c "
+import pandas as pd
+df = pd.read_csv('data/YOUR_ANALYTICS_EXPORT.csv', dtype=str)
+df['Barcode'] = df['Barcode'].str.strip()
+df['Barcode'].drop_duplicates().sort_values().to_frame().to_excel('data/SP26_barcodes.xlsx', index=False)
+"
+```
+
+**3d — Load into Alma set:**
+In Alma: **Admin > Manage Sets > Create Set (Itemized) > Upload from file**
+
+**3e — Bulk add note:**
+In Alma: **Admin > Manage Sets > [your set] > Run a Job > Change Physical Items Information**
+Set internal note to current semester label (e.g. `On Reserve SP26`).
+
+If barcodes error on upload: malformed barcodes (not 14 digits) need source correction;
+valid-looking barcodes that still error are likely inactive — recheck the `Lifecycle = Active` filter.
+
+---
+
+### Step 4: Create Courses in Alma
 
 ```bash
 cd "/Users/patty_home/Desktop/Agentic AI/scripts/course_reserves_update"
@@ -211,10 +271,12 @@ Before running for a new semester:
 - [ ] Review consolidated output files
 - [ ] Run Step 2 (alma_isbn_search_tool.py)
 - [ ] Check ISBN search results
-- [ ] Run Step 3 DRY-RUN first
+- [ ] Run Step 3 — extract ISBNs, get barcodes from Analytics (with Lifecycle=Active filter)
+- [ ] Load barcodes into Alma set and bulk add internal note
+- [ ] Run Step 4 DRY-RUN first
 - [ ] Review dry-run output
 - [ ] Get API permissions (if needed)
-- [ ] Run Step 3 for REAL
+- [ ] Run Step 4 for REAL
 
 ---
 

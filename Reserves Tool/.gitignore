@@ -1,0 +1,12 @@
+# Data files - kept locally, not shared on GitHub
+*.xlsx
+*.xls
+*.csv
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store

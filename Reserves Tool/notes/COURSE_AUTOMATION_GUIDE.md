@@ -2,21 +2,208 @@
 
 ## Overview
 
-This guide documents the complete workflow for automating course reserves in Alma using course and textbook data from your registrar system.
+This guide documents the complete workflow for managing course reserves in Alma using course and textbook data from your registrar system. It covers:
+
+1. **Reserves Comparison & Maintenance** — checking staff work and generating removal lists each semester
+2. **Course Reserves Automation** — creating Alma course entries and reading lists from textbook data
 
 **Created:** February 23, 2026
-**Status:** Ready for API permissions
+**Last Updated:** March 5, 2026
 
 ---
 
 ## Table of Contents
 
-1. [System Architecture](#system-architecture)
-2. [Data Processing Workflow](#data-processing-workflow)
-3. [Running the Automation](#running-the-automation)
-4. [Files & Locations](#files--locations)
-5. [Troubleshooting](#troubleshooting)
-6. [Future Updates](#future-updates)
+1. [Reserves Maintenance Workflow (Each Semester)](#reserves-maintenance-workflow-each-semester)
+2. [System Architecture](#system-architecture)
+3. [Data Processing Workflow](#data-processing-workflow)
+4. [Running the Automation](#running-the-automation)
+5. [Files & Locations](#files--locations)
+6. [Troubleshooting](#troubleshooting)
+7. [Future Updates](#future-updates)
+
+---
+
+## Reserves Maintenance Workflow (Each Semester)
+
+Run this workflow at the **start of each semester** to verify reserves are correct and clean up outdated items.
+
+### What You Need
+
+1. **Alma citations export** — Export from Alma: Reading Lists → Export citations to Excel
+   - Save as: `/data/SP[YY] Citations.xlsx` (e.g., `SP26 Citations.xlsx`)
+2. **Merged course/textbook dataset** — From registrar + bookstore data
+   - Save as: `/data/merged_course_textbooks_CLEANED.xlsx`
+
+### Step 1: Run the Comparison Report
+
+```bash
+cd "/Users/patty_home/Desktop/Agentic AI/Reserves Tool"
+python scripts/compare_reserves.py
+```
+
+This generates a timestamped Excel report in `/reports/` with the following tabs:
+
+| Tab | Purpose | Action Needed |
+|-----|---------|---------------|
+| **Summary** | Overview counts for all categories | Review numbers |
+| **Removal_Priority_RESE** | Items on the temporary RESE shelf NOT in current semester | PHYSICAL: retrieve book from RESE shelf and reshelve to permanent location |
+| **Removal_ReadingList_Only** | Items in reading lists only (not on RESE shelf) NOT in current semester — includes CLOSED permanent location items | DIGITAL: remove citation from reading list in Alma only |
+| **Missing_Books** | Textbooks (physical books) that should be on reserve but aren't in Alma | Add to reserves; Primo lookup included to check catalog availability |
+| **Missing_NonPrint** | E-books, e-resources, etc. that should be in reading lists but aren't | Add citation to reading list in Alma |
+| **Confirmed_On_Reserves** | Items correctly matched — nothing to do | For reference / spot-checking |
+| **Needs_Review** | ISBN found in Alma but under a different course code | Manually verify if citation should be reassigned |
+
+### Step 2: Process the Removal List
+
+**Removal_Priority_RESE tab** (do first):
+- Items on the RESE shelf that haven't been used since **Spring 2024 or earlier** (2+ years)
+- Retrieve each physical book from the RESE shelf and reshelve it to its permanent location
+- Then remove the citation from the Alma reading list
+
+**Removal_ReadingList_Only tab**:
+- Items only in Alma reading lists (no physical book to retrieve)
+- Includes items in permanent CLOSED locations (book stays, only citation is removed)
+- Remove each citation from its reading list in Alma
+
+### Optional: Run the Reuse Analysis
+
+To identify titles that are consistently requested semester after semester, run:
+
+```bash
+cd "/Users/patty_home/Desktop/Agentic AI/Reserves Tool"
+python scripts/reuse_analysis.py
+```
+
+This uses the same Alma citations file and produces a report in `/reports/reuse_analysis_[timestamp].xlsx`:
+
+| Tab | Contents |
+|-----|----------|
+| **Summary** | Tier counts and overview |
+| **Long_Term_Staples** | Titles used 5+ semesters — strong candidates for permanent reserve |
+| **Frequently_Reused** | Titles used 3-4 semesters |
+| **Occasional** | Titles used in exactly 2 semesters |
+| **All_Titles** | All titles sorted by reuse count |
+| **By_Course_Title** | Per-course view — same course reusing same book across semesters |
+
+**Tip:** Cross-reference the `Long_Term_Staples` tab against the `Removal_Priority_RESE` tab in the comparison report. If a title appears on both lists (flagged for removal but historically high-use), consider keeping it on reserve rather than removing it.
+
+---
+
+### Step 3: Process the Missing Lists
+
+**Missing_Books tab**:
+- Books instructors have requested but are not found in Alma reserves
+- The **Primo lookup columns** (In_Catalog, Has_Physical, Has_Electronic, Catalog_Action) show what's already in the library catalog
+- Use `Catalog_Action` to decide next steps:
+  - `In Catalog - Add to Reading List` → book exists, just add to reserves
+  - `Not in Catalog - Purchase Needed` → submit purchase request
+
+**Missing_NonPrint tab**:
+- E-resources, e-books, etc. not found in reading lists
+- Add the citation manually to the appropriate course reading list in Alma
+
+### Step 4: Add Internal Notes to Reserve Items
+
+At the start of each semester, add an internal note (e.g. `On Reserve SP26`) to all physical
+items currently on reserve. This requires building an Alma set from barcodes.
+
+**Step 4a — Extract ISBNs from course data**
+
+The authoritative source is `data/full_dataset_BOOKS_consolidated.xlsx`.
+
+```bash
+cd "/Users/patty_home/Desktop/Agentic AI/Reserves Tool"
+python3 -c "
+import pandas as pd, re
+df = pd.read_excel('data/full_dataset_BOOKS_consolidated.xlsx')
+isbns = set()
+for val in df['ISBN_All_Editions'].dropna():
+    for p in re.split(r'[,;]', str(val)):
+        p = p.strip().replace('-', '')
+        if re.fullmatch(r'\d{10}|\d{13}', p):
+            isbns.add(p)
+pd.DataFrame(sorted(isbns), columns=['ISBN']).to_csv('data/SP26_ISBNs_for_analytics.csv', index=False)
+print(len(isbns), 'ISBNs saved')
+"
+```
+
+Output: `data/SP26_ISBNs_for_analytics.csv` — one ISBN per row.
+
+**Step 4b — Get barcodes from Alma Analytics**
+
+Build a report in Alma Analytics (Physical Items subject area):
+
+Columns: `ISBN`, `Barcode`
+
+Filters:
+| Field | Condition | Value |
+|---|---|---|
+| ISBN | is in | *(paste your ISBN list)* |
+| **AND** Lifecycle | equals | `Active` |
+
+> Always include `Lifecycle = Active`. Without it, weeded/suppressed items will appear
+> and fail to load into a set in Alma.
+
+Export as CSV and save to `data/`.
+
+**Step 4c — Extract barcodes**
+
+```bash
+python3 -c "
+import pandas as pd
+df = pd.read_csv('data/YOUR_ANALYTICS_EXPORT.csv', dtype=str)
+df['Barcode'] = df['Barcode'].str.strip()
+df['Barcode'].drop_duplicates().sort_values().to_frame().to_excel('data/SP26_barcodes.xlsx', index=False)
+"
+```
+
+**Step 4d — Load barcodes into an Alma set**
+
+In Alma: **Admin > Manage Sets > Create Set (Itemized) > Upload from file**
+
+Upload `SP26_barcodes.xlsx`. If any barcodes error out:
+- **Malformed barcodes** (not 14 digits, has spaces or extra digits) — check the source data
+- **"Error retrieving identifier"** with valid-looking barcodes — likely inactive items;
+  confirm `Lifecycle = Active` was applied in Step 4b
+
+**Step 4e — Bulk add the internal note**
+
+In Alma: **Admin > Manage Sets > [your set] > Run a Job > Change Physical Items Information**
+
+Set the internal note field to the current semester label (e.g. `On Reserve SP26`).
+
+---
+
+### Adjusting the Removal Cutoff Date
+
+The script only flags items last used **2+ years ago** (currently: Spring 2024 and older).
+
+To change this, edit line ~57 in `scripts/compare_reserves.py`:
+```python
+REMOVAL_CUTOFF_TERM = 'Spring 2024'   # Change this term as needed
+```
+
+Available terms in order: Summer 2023, Fall 2023, Winter 2024, Spring 2024, Summer 2024, Fall 2024, Winter 2025, Spring 2025, Summer 2025, Fall 2025, Winter 2026, Spring 2026
+
+### Title & Publisher Filters
+
+The script automatically excludes items the library does not purchase. To update these lists, edit the constants in `scripts/compare_reserves.py` around line 187:
+
+```python
+EXCLUDE_TITLE_TERMS = [
+    'lab manual', 'lab. manual', 'laboratory manual', 'laboratory',
+    'with connect', 'connect online access', ...
+]
+
+EXCLUDE_PUBLISHER_TERMS = [
+    'openstax', 'open stax', 'opentextbook',
+]
+```
+
+Items with 'oer', 'openstax', or 'open stax' in the **title** are reclassified from Book to OER/non-print rather than excluded.
+
+---
 
 ---
 
@@ -197,6 +384,13 @@ ENG WK95, HSD 110, HSD 190, HSD 195, HSD 202, HSD 211, HSD 220, HSD 225, HSD 230
 
 ### Scripts
 
+**Reserves Maintenance (run each semester):**
+- `/scripts/compare_reserves.py` - **Main maintenance script** — compares Alma citations against semester dataset, generates removal lists and missing items report with Primo catalog lookup
+- `/scripts/reuse_analysis.py` - **Reuse analysis** — identifies titles used across multiple semesters; outputs reuse tiers (Long-Term Staple, Frequently Reused, Occasional, Single Semester)
+
+**Data Merging:**
+- `/scripts/isbn_search/merge_course_data.py` - Merges registrar course info with textbook list; splits Books vs Non-Print; applies title/publisher filters
+
 **Processing:**
 - `/scripts/process_full_dataset.py` - Main consolidation script
 - `/scripts/generate_dataset_reports.py` - Analysis and reporting
@@ -213,6 +407,8 @@ ENG WK95, HSD 110, HSD 190, HSD 195, HSD 202, HSD 211, HSD 220, HSD 225, HSD 230
 ### Reports
 
 **Generated in:** `/reports/`
+- `reserves_comparison_[timestamp].xlsx` - **Main maintenance report** (Summary, Removal tabs, Missing tabs, Confirmed, Needs_Review)
+- `reuse_analysis_[timestamp].xlsx` - **Reuse analysis report** (Long-Term Staples, Frequently Reused, Occasional, All Titles, By Course+Title)
 - `course_summary_[timestamp].xlsx` - Course statistics
 - `data_quality_issues_[timestamp].xlsx` - Data quality problems
 
@@ -310,11 +506,30 @@ errorCode>UNAUTHORIZED</errorCode>
 
 **When new semester data arrives:**
 
-1. Place new files in `/data/` directory
-2. Run `process_full_dataset.py` on new data
-3. Review reports for quality issues
-4. Run automation (test first, then full)
-5. Archive old semester data
+1. Get files from registrar and bookstore:
+   - Textbook list → `/data/textbooklist_[semester]_[date].xlsx`
+   - Course info → `/data/courseinfo_[semester]_[date].xlsx`
+   - Alma citations export → `/data/[semester] Citations.xlsx`
+
+2. Merge course and textbook data:
+   ```bash
+   python scripts/isbn_search/merge_course_data.py
+   ```
+   Output: `/data/merged_course_textbooks.xlsx` (and `_BOOKS.xlsx`, `_NONPRINT.xlsx`)
+
+3. Run the reserves comparison report (see [Reserves Maintenance Workflow](#reserves-maintenance-workflow-each-semester)):
+   ```bash
+   python scripts/compare_reserves.py
+   ```
+
+4. Process removal lists and missing items from the report
+
+5. Run Alma automation to create new course entries (test first, then full):
+   ```bash
+   python projects/030226_test/run_automation_test.py
+   ```
+
+6. Archive old semester data files
 
 ### Enhancements
 
@@ -378,5 +593,5 @@ errorCode>UNAUTHORIZED</errorCode>
 - **Alma configuration:** Consult Ex Libris documentation
 - **Script errors:** Check error messages and troubleshooting section
 
-**Last Updated:** March 2, 2026
-**Version:** 1.0
+**Last Updated:** March 5, 2026
+**Version:** 1.2
