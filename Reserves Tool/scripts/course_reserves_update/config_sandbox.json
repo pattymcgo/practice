@@ -1,6 +1,0 @@
-{
-    "alma_api_key": "YOUR_SANDBOX_API_KEY_HERE",
-    "alma_region": "na",
-    "environment": "sandbox",
-    "base_url": "https://api-na-sandbox.hosted.exlibrisgroup.com"
-}
