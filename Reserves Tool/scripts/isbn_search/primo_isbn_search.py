@@ -168,6 +168,7 @@ def extract_primo_info(primo_result):
         'availability': '',
         'has_electronic': False,
         'has_physical': False,
+        'location': '',
         'course_info': '',
         'edition': '',
         'publication_date': ''
@@ -178,53 +179,71 @@ def extract_primo_info(primo_result):
         if not docs:
             return info
 
-        # Get first result
         doc = docs[0]
         pnx = doc.get('pnx', {})
         display = pnx.get('display', {})
 
-        # Extract title
+        # Title
         title_list = display.get('title', [])
         info['title'] = title_list[0] if title_list else 'Unknown'
 
-        # Extract MMS ID from the @id field
+        # MMS ID from @id URL (e.g. .../pnxs/L/990090615320106141)
         record_id = doc.get('@id', '')
         if record_id:
-            # Extract MMS ID from URL like: .../pnxs/L/9994494967306141
-            parts = record_id.split('/')
-            if len(parts) > 0:
-                info['mms_id'] = parts[-1]
+            info['mms_id'] = record_id.split('/')[-1]
 
-        # Extract format/type
+        # Format/type
         type_list = display.get('type', [])
         info['format'] = type_list[0] if type_list else 'Unknown'
 
-        # Check for electronic/physical availability
-        avail = display.get('availlibrary', [])
-        if avail:
-            avail_text = ' '.join(avail).lower()
-            info['has_electronic'] = 'electronic' in avail_text or 'online' in avail_text
-            info['has_physical'] = 'main campus' in avail_text or 'available' in avail_text
-
-        # Get availability status
-        lds50 = display.get('lds50', [])
-        if lds50:
-            info['availability'] = lds50[0]
-
-        # Extract course information if available
-        crsinfo = display.get('crsinfo', [])
-        if crsinfo:
-            info['course_info'] = crsinfo[0]
-
-        # Extract edition information
+        # Edition
         edition_list = display.get('edition', [])
         if edition_list:
             info['edition'] = edition_list[0]
 
-        # Extract publication date
+        # Publication date
         creation_date = display.get('creationdate', [])
         if creation_date:
             info['publication_date'] = creation_date[0]
+
+        # Course assignment
+        crsinfo = display.get('crsinfo', [])
+        if crsinfo:
+            info['course_info'] = crsinfo[0]
+
+        # ── Availability: read from doc['delivery'], not pnx.display ──────────
+        # pnx.display.availlibrary is often empty; delivery.holding is reliable.
+        delivery = doc.get('delivery', {})
+
+        # Electronic access
+        if delivery.get('electronicServices') or any(
+            'online' in str(s).lower() or 'electronic' in str(s).lower()
+            for s in delivery.get('deliveryCategory', [])
+        ):
+            info['has_electronic'] = True
+
+        # Physical holdings: any holding at BMCC with availabilityStatus=available
+        holdings = delivery.get('holding', [])
+        if isinstance(holdings, dict):
+            holdings = [holdings]
+
+        available_locations = []
+        for h in holdings:
+            org = h.get('organization', '')
+            status = h.get('availabilityStatus', '')
+            loc = h.get('subLocation', '') or h.get('mainLocation', '')
+            # Only count BMCC holdings (org code 01CUNY_BM)
+            if org == '01CUNY_BM' and status == 'available':
+                info['has_physical'] = True
+                if loc:
+                    available_locations.append(loc)
+
+        info['location'] = ', '.join(available_locations) if available_locations else ''
+
+        # Top-level availability summary (e.g. "available_in_library")
+        avail_list = delivery.get('availability', [])
+        if avail_list:
+            info['availability'] = avail_list[0]
 
     except Exception as e:
         print(f"  Warning: Error extracting info: {e}")
@@ -283,6 +302,7 @@ def process_isbn_list(input_file):
         # Build base result with course info from input
         base_result = {
             'Course': row.get('Course', ''),
+            'Course_Description': row.get('Course_Description', ''),
             'Section': row.get('Section', ''),
             'Instructor_Name': row.get('Instructor_Name', ''),
             'Total_Enrollment': row.get('Total_Enrollment', ''),
@@ -306,6 +326,7 @@ def process_isbn_list(input_file):
                 'Edition_Match': 'N/A',
                 'Has_Physical': 'No',
                 'Has_Electronic': 'No',
+                'Location': '',
                 'Availability': '',
                 'Course_Assignment': '',
                 'Recommendation': 'Check ISBN'
@@ -347,6 +368,7 @@ def process_isbn_list(input_file):
                 'Edition_Match': edition_match,
                 'Has_Physical': 'Yes' if primo_info['has_physical'] else 'No',
                 'Has_Electronic': 'Yes' if primo_info['has_electronic'] else 'No',
+                'Location': primo_info['location'],
                 'Availability': primo_info['availability'],
                 'Course_Assignment': primo_info['course_info'],
                 'Recommendation': recommendation
@@ -365,6 +387,7 @@ def process_isbn_list(input_file):
                 'Edition_Match': 'N/A',
                 'Has_Physical': 'No',
                 'Has_Electronic': 'No',
+                'Location': '',
                 'Availability': '',
                 'Course_Assignment': '',
                 'Recommendation': 'Purchase Required'

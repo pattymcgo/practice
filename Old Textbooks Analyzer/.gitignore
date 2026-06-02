@@ -1,0 +1,19 @@
+# API keys
+config.json
+config_sandbox.json
+
+# Data exports from Alma (may contain barcodes and item data)
+data/
+
+# Cached API responses
+cache/
+
+# Analysis output files
+output/
+
+# macOS
+.DS_Store
+
+# Python cache
+__pycache__/
+*.pyc

@@ -1,8 +1,10 @@
+# Generated files with faculty/course data
+**/alma_course_loader_*.txt
+
 # API Keys and Sensitive Configuration
-scripts/isbn_search/config.json
-scripts/isbn_search/config_sandbox.json
-scripts/course_reserves_update/config.json
-scripts/course_reserves_update/config_sandbox.json
+# Use **/config*.json to match config files anywhere in the repo tree
+**/config.json
+**/config_sandbox.json
 
 # Data Files (may contain sensitive information)
 data/*.xlsx
@@ -29,7 +31,7 @@ env/
 .LSOverride
 
 # Session transcripts (may be large)
-notes/*.jsonl
+**/*.jsonl
 
 # IDE
 .vscode/
@@ -37,6 +39,18 @@ notes/*.jsonl
 *.swp
 *.swo
 *~
+
+# Office and presentation files (personal documents)
+*.pptx
+*.docx
+*.pdf
+
+# Saved web pages
+*.html
+*_files/
+
+# Dropbox
+Dropbox Scans/
 
 # Temporary files
 *.tmp

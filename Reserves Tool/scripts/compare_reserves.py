@@ -9,8 +9,11 @@ the Spring 2026 merged course/textbook dataset to identify:
   3. Items to potentially remove (on reading lists but not in Spring 2026)
      - Priority: items physically on the RESE shelf
   4. Items needing review (course/edition mismatches)
+  5. Course roster check (via Alma Courses API):
+     - Active Spring 2026 Alma courses with no textbook request submitted
+     - Textbook requests for courses with no active Alma course record
 
-OUTPUT: Excel report with 5 tabs. NO changes are made to Alma.
+OUTPUT: Excel report with tabs. NO changes are made to Alma.
 
 Usage:
     python scripts/compare_reserves.py
@@ -18,6 +21,8 @@ Usage:
 Author: Patty (with Claude Code assistance)
 """
 
+import json
+import time
 import pandas as pd
 import re
 import requests
@@ -30,10 +35,16 @@ from openpyxl.utils import get_column_letter
 # FILE PATHS
 # ============================================================================
 
-BASE_DIR = "/Users/patty_home/Desktop/Agentic AI/Reserves Tool"
+BASE_DIR        = "/Users/patty_home/Desktop/Agentic AI/Reserves Tool"
 CITATIONS_FILE  = os.path.join(BASE_DIR, "data/SP26 Citations.xlsx")
 MERGED_FILE     = os.path.join(BASE_DIR, "data/merged_course_textbooks_CLEANED.xlsx")
 REPORTS_DIR     = os.path.join(BASE_DIR, "reports")
+CONFIG_PATH     = os.path.join(BASE_DIR, "scripts/isbn_search/config.json")
+
+ALMA_BASE = "https://api-na.hosted.exlibrisgroup.com"
+
+# Labels Alma might use for Spring 2026 in the term field
+SPRING_2026_ALIASES = {"spring 2026", "2026 spring", "sp26", "s26", "spring26", "spring 26"}
 
 # Chronological ranking of academic terms (higher number = more recent)
 # Used for sorting and determining the removal cutoff
@@ -135,6 +146,305 @@ def parse_edition_from_imprint(imprint):
         return ""
     years = re.findall(r'\b(19|20)\d{2}\b', str(imprint))
     return years[-1] if years else ""
+
+
+# ============================================================================
+# ALMA COURSES API  (course roster check)
+# ============================================================================
+
+def load_alma_api_key():
+    """Load the Alma API key from config.json. Returns the key or None."""
+    try:
+        with open(CONFIG_PATH) as f:
+            return json.load(f).get("alma_api_key")
+    except FileNotFoundError:
+        return None
+
+
+def fetch_active_sp26_courses(api_key):
+    """
+    Fetch all courses from Alma and return only those that are:
+      - Status = ACTIVE
+      - Belong to Spring 2026 (term label or date window)
+
+    Returns a list of course dicts.
+    """
+    url     = f"{ALMA_BASE}/almaws/v1/courses"
+    headers = {"Authorization": f"apikey {api_key}", "Accept": "application/json"}
+    offset  = 0
+    limit   = 100
+    total   = None
+    all_courses = []
+
+    print("  Fetching all courses from Alma Courses API...")
+
+    while True:
+        resp = requests.get(
+            url, headers=headers,
+            params={"limit": limit, "offset": offset},
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            print(f"  WARNING: Alma API returned {resp.status_code}. Skipping course roster check.")
+            return []
+
+        data = resp.json()
+        if total is None:
+            total = int(data.get("total_record_count", 0))
+
+        courses = data.get("course", [])
+        if not isinstance(courses, list):
+            courses = [courses] if courses else []
+
+        all_courses.extend(courses)
+        print(f"    Fetched {len(all_courses):,} / {total:,} ...", end="\r")
+
+        if len(all_courses) >= total or not courses:
+            break
+
+        offset += limit
+        time.sleep(0.2)
+
+    print(f"\n  Total courses fetched: {len(all_courses):,}")
+
+    # Filter to active Spring 2026 courses
+    sp26 = []
+    for c in all_courses:
+        # Status check
+        status = c.get("status", "")
+        if isinstance(status, dict):
+            status = status.get("value", "")
+        if str(status).upper() != "ACTIVE":
+            continue
+
+        # Spring 2026 term check
+        terms = c.get("term", [])
+        if not isinstance(terms, list):
+            terms = [terms] if terms else []
+
+        is_sp26 = False
+        for t in terms:
+            val = (t.get("value") or t.get("desc") or "").lower().strip()
+            if any(alias in val for alias in SPRING_2026_ALIASES):
+                is_sp26 = True
+                break
+
+        # Fallback: check if start_date OR end_date falls in Spring 2026 window (Jan–Jun 2026)
+        # NOTE: Must check both fields because many courses span multiple semesters and
+        # have a start_date from years ago — the end_date is what places them in SP26.
+        if not is_sp26:
+            for date_field in ("start_date", "end_date"):
+                raw = c.get(date_field, "")
+                if not raw:
+                    continue
+                try:
+                    d = datetime.fromisoformat(raw.rstrip("Z").split("T")[0])
+                    if datetime(2026, 1, 1) <= d <= datetime(2026, 6, 30):
+                        is_sp26 = True
+                        break
+                except ValueError:
+                    pass
+
+        if is_sp26:
+            sp26.append(c)
+
+    print(f"  Active Spring 2026 courses in Alma: {len(sp26):,}")
+    return sp26
+
+
+def build_course_roster_check(merged_df, alma_courses):
+    """
+    Cross-reference active Spring 2026 Alma courses against the textbook
+    spreadsheet (merged_df).
+
+    Returns two DataFrames:
+      alma_no_request  -- Alma courses with NO textbook request in merged_df
+      roster_no_alma   -- Merged courses with NO matching active Alma course
+    """
+    # Build set of course codes from the textbook spreadsheet
+    roster_codes = set(merged_df['Course_Clean'].str.strip().str.upper().dropna())
+
+    # Build set of course codes from Alma (strip instructor names)
+    alma_code_map = {}  # clean_code -> list of course dicts
+    for c in alma_courses:
+        raw_code   = c.get("code", "")
+        clean_code = clean_course_code(raw_code).upper()
+        alma_code_map.setdefault(clean_code, []).append(c)
+
+    alma_codes = set(alma_code_map.keys())
+
+    # --- Alma courses with no textbook request ---
+    alma_no_request_rows = []
+    for clean_code, courses in sorted(alma_code_map.items()):
+        if clean_code in roster_codes:
+            continue
+        for c in courses:
+            # Get term label
+            terms = c.get("term", [])
+            if isinstance(terms, list):
+                term_labels = [t.get("desc") or t.get("value") or "" for t in terms]
+                term_str = " | ".join(t for t in term_labels if t)
+            else:
+                term_str = str(terms)
+
+            # Get instructor
+            instructors = c.get("instructor", [])
+            if not isinstance(instructors, list):
+                instructors = [instructors] if instructors else []
+            instr_str = "; ".join(
+                f"{i.get('last_name','')}, {i.get('first_name','')}".strip(", ")
+                for i in instructors
+            )
+
+            alma_no_request_rows.append({
+                "Course_Code":  clean_code,
+                "Course_Name":  c.get("name", ""),
+                "Section":      c.get("section", ""),
+                "Term":         term_str,
+                "Instructor":   instr_str,
+                "Enrollment":   c.get("participants_number", ""),
+                "Start_Date":   c.get("start_date", ""),
+                "End_Date":     c.get("end_date", ""),
+                "Flag":         "Active in Alma — no textbook request found",
+            })
+
+    # --- Textbook requests with no matching Alma course ---
+    roster_no_alma_rows = []
+    courses_missing = sorted(roster_codes - alma_codes)
+
+    for course_code in courses_missing:
+        subset = merged_df[merged_df['Course_Clean'].str.upper() == course_code]
+        sections    = ", ".join(sorted(subset['Section'].astype(str).unique()))
+        instructors = "; ".join(sorted(subset['Instructor_Name'].dropna().unique()))
+        enrollment  = subset['Total_Enrollment'].apply(
+            lambda x: pd.to_numeric(x, errors='coerce')
+        ).sum()
+        titles = "; ".join(subset['Title'].dropna().unique()[:3])  # first 3 titles
+        if len(subset['Title'].dropna().unique()) > 3:
+            titles += " ..."
+
+        roster_no_alma_rows.append({
+            "Course_Code":       course_code,
+            "Sections":          sections,
+            "Instructors":       instructors,
+            "Total_Enrollment":  int(enrollment) if enrollment > 0 else "",
+            "Textbook_Count":    len(subset),
+            "Titles_Preview":    titles,
+            "Flag":              "In textbook spreadsheet — no active Alma course found",
+        })
+
+    return pd.DataFrame(alma_no_request_rows), pd.DataFrame(roster_no_alma_rows)
+
+
+def build_section_instructor_check(merged_df, alma_courses):
+    """
+    For courses that exist in BOTH the textbook spreadsheet AND Alma,
+    check whether the sections and instructors match.
+
+    Section logic:
+      - If Alma's section field is blank, that is flagged as needing manual
+        verification — it may mean all sections or it may be missing data.
+      - If Alma lists specific sections, they are compared to the spreadsheet.
+
+    Instructor logic:
+      - Names are normalized to uppercase last name for comparison (handles
+        format differences like 'Kleinman,Harry' vs 'KLEINMAN, HARRY').
+      - Empty Alma instructor entries (', ') are ignored.
+
+    Returns a DataFrame of courses with at least one mismatch or gap.
+    """
+    roster_codes = set(merged_df['Course_Clean'].str.strip().str.upper().dropna())
+
+    alma_code_map = {}
+    for c in alma_courses:
+        clean_code = clean_course_code(c.get("code", "")).upper()
+        alma_code_map.setdefault(clean_code, []).append(c)
+
+    matched_codes = roster_codes & set(alma_code_map.keys())
+
+    rows = []
+    for course_code in sorted(matched_codes):
+        subset = merged_df[merged_df['Course_Clean'].str.upper() == course_code]
+
+        # --- Textbook sections and instructors ---
+        roster_sections = {
+            s.strip() for s in subset['Section'].astype(str).unique()
+            if s.strip() and s.strip().lower() != 'nan'
+        }
+        roster_instr_raw = {
+            str(n).strip() for n in subset['Instructor_Name'].dropna().unique()
+            if str(n).strip()
+        }
+        roster_lastnames = {
+            n.split(",")[0].strip().upper() for n in roster_instr_raw if n
+        }
+
+        # --- Alma sections and instructors ---
+        alma_section_set  = set()
+        alma_instr_raw    = set()
+        alma_section_blank = False  # True if any Alma record has no section value
+
+        for c in alma_code_map[course_code]:
+            sec = str(c.get("section", "") or "").strip()
+            if not sec:
+                alma_section_blank = True
+            else:
+                for s in sec.split(","):
+                    s = s.strip()
+                    if s:
+                        alma_section_set.add(s)
+
+            instructors = c.get("instructor", [])
+            if not isinstance(instructors, list):
+                instructors = [instructors] if instructors else []
+            for i in instructors:
+                last  = (i.get("last_name",  "") or "").strip()
+                first = (i.get("first_name", "") or "").strip()
+                if last:  # skip blank entries like ', '
+                    alma_instr_raw.add(f"{last}, {first}".strip(", ").upper())
+
+        alma_lastnames = {
+            n.split(",")[0].strip().upper() for n in alma_instr_raw if n
+        }
+
+        # --- Section comparison ---
+        if alma_section_blank and not alma_section_set:
+            # No section data at all in Alma — flag for manual check
+            sections_missing_from_alma   = set()
+            sections_missing_from_roster = set()
+            section_status = "No section data in Alma — verify manually"
+        elif alma_section_blank:
+            # Some records have sections, at least one is blank — compare what we have
+            sections_missing_from_alma   = roster_sections - alma_section_set
+            sections_missing_from_roster = alma_section_set - roster_sections
+            section_status = "Partial — at least one Alma record has no section"
+        else:
+            sections_missing_from_alma   = roster_sections - alma_section_set
+            sections_missing_from_roster = alma_section_set - roster_sections
+            section_status = "OK" if not sections_missing_from_alma and not sections_missing_from_roster else "Mismatch"
+
+        # --- Instructor comparison (last name only) ---
+        instr_missing_from_alma   = roster_lastnames - alma_lastnames
+        instr_missing_from_roster = alma_lastnames - roster_lastnames
+        instr_status = "OK" if not instr_missing_from_alma and not instr_missing_from_roster else "Mismatch"
+
+        has_issue = section_status != "OK" or instr_status != "OK"
+        if has_issue:
+            rows.append({
+                "Course_Code":                    course_code,
+                "Section_Status":                 section_status,
+                "Roster_Sections":                ", ".join(sorted(roster_sections)),
+                "Alma_Sections":                  ", ".join(sorted(alma_section_set)) if alma_section_set else "(blank)",
+                "Sections_In_Roster_Not_Alma":    ", ".join(sorted(sections_missing_from_alma)),
+                "Sections_In_Alma_Not_Roster":    ", ".join(sorted(sections_missing_from_roster)),
+                "Instructor_Status":              instr_status,
+                "Roster_Instructors":             "; ".join(sorted(roster_instr_raw)),
+                "Alma_Instructors":               "; ".join(sorted(alma_instr_raw)),
+                "Instructors_In_Roster_Not_Alma": "; ".join(sorted(instr_missing_from_alma)),
+                "Instructors_In_Alma_Not_Roster": "; ".join(sorted(instr_missing_from_roster)),
+            })
+
+    return pd.DataFrame(rows)
 
 
 # ============================================================================
@@ -549,6 +859,9 @@ TAB_COLORS = {
     'Missing_NonPrint':        ('17375E', 'DDEBF7'),  # Dark teal / light blue
     'Confirmed_On_Reserves':   ('375623', 'E2EFDA'),  # Dark green / light green
     'Needs_Review':            ('7F6000', 'FFEB9C'),  # Dark gold / light yellow
+    'Alma_No_Textbook_Request':  ('7030A0', 'EAD1FF'),  # Purple / light lavender
+    'Roster_No_Alma_Course':     ('C00000', 'FCE4D6'),  # Dark red / light peach
+    'Section_Instructor_Check':  ('7F6000', 'FFEB9C'),  # Dark gold / light yellow
 }
 
 # Colors for the Cleanup_Type column values
@@ -677,6 +990,16 @@ def main():
     # Load
     citations, merged = load_data()
 
+    # Course roster check via Alma Courses API
+    print("Running course roster check against Alma...")
+    api_key = load_alma_api_key()
+    if api_key:
+        alma_sp26_courses = fetch_active_sp26_courses(api_key)
+    else:
+        print("  WARNING: No Alma API key found in config.json. Skipping roster check.")
+        alma_sp26_courses = []
+    print()
+
     # Prepare
     print("Preparing data...")
     citations = prepare_citations(citations)
@@ -699,6 +1022,22 @@ def main():
     print(f"  ISBN found, different course code: {len(isbn_diff_crs)}")
     print(f"  Missing from reserves:             {len(missing)}")
     print()
+
+    # Course roster cross-reference
+    if alma_sp26_courses:
+        print("Cross-referencing course roster against textbook spreadsheet...")
+        alma_no_request, roster_no_alma = build_course_roster_check(merged, alma_sp26_courses)
+        print(f"  Active Alma SP26 courses with no textbook request: {len(alma_no_request):,}")
+        print(f"  Textbook requests with no active Alma course:      {len(roster_no_alma):,}")
+        print()
+        print("Checking sections and instructors for matched courses...")
+        section_instr_check = build_section_instructor_check(merged, alma_sp26_courses)
+        print(f"  Matched courses with section/instructor mismatches: {len(section_instr_check):,}")
+        print()
+    else:
+        alma_no_request     = pd.DataFrame()
+        roster_no_alma      = pd.DataFrame()
+        section_instr_check = pd.DataFrame()
 
     # Build removal list
     print("Building removal candidates list...")
@@ -739,6 +1078,12 @@ def main():
             'Unique courses with reserves set up (SP26 Citations)',
             'Unique courses in Spring 2026 merged dataset',
             'Courses in merged dataset with no reserves found',
+            '',
+            '--- COURSE ROSTER CHECK (ALMA COURSES API) ---',
+            'Active Spring 2026 courses in Alma',
+            'Active Alma courses with NO textbook request (see Alma_No_Textbook_Request)',
+            'Textbook requests with NO active Alma course (see Roster_No_Alma_Course)',
+            'Matched courses with section or instructor mismatches (see Section_Instructor_Check)',
         ],
         'Count': [
             '',
@@ -763,6 +1108,12 @@ def main():
             sp26_cit['Course_Clean'].nunique(),
             merged['Course_Clean'].nunique(),
             missing['Course'].nunique() if len(missing) > 0 else 0,
+            '',
+            '',
+            len(alma_sp26_courses),
+            len(alma_no_request),
+            len(roster_no_alma),
+            len(section_instr_check),
         ],
         'Notes': [
             '',
@@ -787,6 +1138,12 @@ def main():
             'Has at least 1 citation active for Spring 2026',
             'Has at least 1 textbook request for Spring 2026',
             '',
+            '',
+            '',
+            'Fetched live from Alma Courses API',
+            'Faculty may not have submitted textbook info yet',
+            'Course may need to be created or reactivated in Alma',
+            'Section or instructor data differs between spreadsheet and Alma',
         ]
     }
     df_summary = pd.DataFrame(summary_data)
@@ -847,6 +1204,24 @@ def main():
             ]]
             review_out.to_excel(writer, sheet_name='Needs_Review', index=False)
 
+        # Tab 7: Active Alma courses with no textbook request
+        if not alma_no_request.empty:
+            alma_no_request.to_excel(
+                writer, sheet_name='Alma_No_Textbook_Request', index=False
+            )
+
+        # Tab 8: Textbook requests with no active Alma course
+        if not roster_no_alma.empty:
+            roster_no_alma.to_excel(
+                writer, sheet_name='Roster_No_Alma_Course', index=False
+            )
+
+        # Tab 9: Section and instructor mismatches for matched courses
+        if not section_instr_check.empty:
+            section_instr_check.to_excel(
+                writer, sheet_name='Section_Instructor_Check', index=False
+            )
+
         # Apply color formatting to all tabs
         for tab_name, ws in writer.sheets.items():
             style_sheet(ws, tab_name)
@@ -858,13 +1233,16 @@ def main():
     print(f"Report saved to: {output_file}")
     print()
     print("Tabs in the report:")
-    print("  Summary                 - Overview counts and categories")
-    print("  Removal_Priority_RESE   - Items physically on reserve shelf, NOT Spring 2026")
-    print("  Removal_ReadingList_Only- Items in reading lists only, NOT Spring 2026")
-    print("  Missing_Books           - Spring 2026 Books not found in Alma citations")
-    print("  Missing_NonPrint        - Spring 2026 Non-Print items not found in Alma citations")
-    print("  Confirmed_On_Reserves   - Items correctly matched")
-    print("  Needs_Review            - ISBN found but course code differs")
+    print("  Summary                   - Overview counts and categories")
+    print("  Removal_Priority_RESE     - Items physically on reserve shelf, NOT Spring 2026")
+    print("  Removal_ReadingList_Only  - Items in reading lists only, NOT Spring 2026")
+    print("  Missing_Books             - Spring 2026 Books not found in Alma citations")
+    print("  Missing_NonPrint          - Spring 2026 Non-Print items not found in Alma citations")
+    print("  Confirmed_On_Reserves     - Items correctly matched")
+    print("  Needs_Review              - ISBN found but course code differs")
+    print("  Alma_No_Textbook_Request  - Active Alma courses with no textbook request submitted")
+    print("  Roster_No_Alma_Course     - Textbook requests with no matching active Alma course")
+    print("  Section_Instructor_Check  - Matched courses where sections or instructors differ")
     print()
     print("NO CHANGES have been made to Alma.")
 
